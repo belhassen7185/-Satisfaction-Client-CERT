@@ -1,0 +1,31 @@
+# Hostinger & Apache Configuration for SatisfactionAI / CERT
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Enable CORS headers
+  <IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    Header set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  </IfModule>
+
+  # 2. Route /api/* requests to PHP API handler if Node.js is not proxied
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+
+  # 3. Single Page Application (SPA) Routing: Fallback to index.html
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^.*$ index.html [L]
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes
+
+# Security: Deny direct HTTP access to raw data and environment files
+<FilesMatch "^(db\.json|\.env.*|.*\.ts)$">
+  Order allow,deny
+  Deny from all
+</FilesMatch>

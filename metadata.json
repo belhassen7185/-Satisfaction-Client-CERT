@@ -1,0 +1,10 @@
+{
+  "name": "Satisfaction Client CERT",
+  "description": "Plateforme intelligente de mesure de la satisfaction client et gestion proactive des réclamations avec alertes WhatsApp en temps réel pour le CERT (Centre d'Études et de Recherche des Télécommunications).",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
