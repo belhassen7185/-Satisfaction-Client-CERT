@@ -525,7 +525,17 @@ export const api = {
     try {
       const res = await safeFetch(endpoint);
       const data = await parseJsonResponse<DashboardStats>(res, endpoint, 'GET');
-      if (data && typeof data.totalSurveys === 'number') return data;
+      if (data && typeof data.totalSurveys === 'number') {
+        // Older deployments or partial API payloads may omit fields consumed by the dashboard.
+        return {
+          ...data,
+          complaints: { total: 0, newCount: 0, inProgressCount: 0, resolvedCount: 0, ...(data.complaints || {}) },
+          sentimentBreakdown: { positive: 0, neutral: 0, negative: 0, ...(data.sentimentBreakdown || {}) },
+          channelBreakdown: { web: 0, qr: 0, whatsapp: 0, email: 0, ...(data.channelBreakdown || {}) },
+          topThemes: Array.isArray(data.topThemes) ? data.topThemes : [],
+          timeline: Array.isArray(data.timeline) ? data.timeline : [],
+        };
+      }
     } catch (err: any) {
       logApiDiagnosticError(endpoint, 'GET', 0, 'DASHBOARD_STATS_NETWORK_ERROR', err?.message || String(err));
     }
