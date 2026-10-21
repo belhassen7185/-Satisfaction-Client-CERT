@@ -42,6 +42,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNavigateToComplaints,
   onNavigateToReports,
 }) => {
+  const safeSurveys = Array.isArray(surveys) ? surveys : [];
   const t = translations[language];
   const isRtl = language === 'ar' || language === 'tn';
 
@@ -85,8 +86,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }
 
   const s = stats || {
-    totalSurveys: surveys.length,
-    publishedSurveys: surveys.filter((x) => x.status === 'published').length,
+    totalSurveys: safeSurveys.length,
+    publishedSurveys: safeSurveys.filter((x) => x.status === 'published').length,
     totalResponses: 0,
     participationRate: 0,
     csatPercentage: 0,
@@ -101,20 +102,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
     timeline: [],
   };
 
-  const totalSentiments =
-    (s.sentimentBreakdown.positive || 0) +
-    (s.sentimentBreakdown.neutral || 0) +
-    (s.sentimentBreakdown.negative || 0) || 1;
+  // Normalize API payloads before rendering: older or partial API responses may omit arrays.
+  const safeStats = {
+    ...s,
+    complaints: { total: 0, newCount: 0, inProgressCount: 0, resolvedCount: 0, ...(s.complaints || {}) },
+    sentimentBreakdown: { positive: 0, neutral: 0, negative: 0, ...(s.sentimentBreakdown || {}) },
+    channelBreakdown: { web: 0, qr: 0, whatsapp: 0, email: 0, ...(s.channelBreakdown || {}) },
+    topThemes: Array.isArray(s.topThemes) ? s.topThemes : [],
+    timeline: Array.isArray(s.timeline) ? s.timeline : [],
+  };
 
-  const posPct = Math.round(((s.sentimentBreakdown.positive || 0) / totalSentiments) * 100);
-  const neuPct = Math.round(((s.sentimentBreakdown.neutral || 0) / totalSentiments) * 100);
+  const totalSentiments =
+    (safeStats.sentimentBreakdown.positive || 0) +
+    (safeStats.sentimentBreakdown.neutral || 0) +
+    (safeStats.sentimentBreakdown.negative || 0) || 1;
+
+  const posPct = Math.round(((safeStats.sentimentBreakdown.positive || 0) / totalSentiments) * 100);
+  const neuPct = Math.round(((safeStats.sentimentBreakdown.neutral || 0) / totalSentiments) * 100);
   const negPct = 100 - posPct - neuPct;
 
   const totalChannels =
-    (s.channelBreakdown.web || 0) +
-    (s.channelBreakdown.qr || 0) +
-    (s.channelBreakdown.whatsapp || 0) +
-    (s.channelBreakdown.email || 0) || 1;
+    (safeStats.channelBreakdown.web || 0) +
+    (safeStats.channelBreakdown.qr || 0) +
+    (safeStats.channelBreakdown.whatsapp || 0) +
+    (safeStats.channelBreakdown.email || 0) || 1;
 
   return (
     <div className="space-y-6">
@@ -159,7 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 cursor-pointer focus:outline-none"
         >
           <option value="all">{t.allSurveys}</option>
-          {surveys.map((sv) => (
+          {safeSurveys.map((sv) => (
             <option key={sv.id} value={sv.id}>
               {sv.title}
             </option>
@@ -321,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* SVG Timeline Chart */}
           <div className="h-64 flex flex-col justify-end pt-4">
             <div className="flex items-end justify-between h-48 gap-2 pt-4 px-2 border-b border-slate-100">
-              {s.timeline.map((pt, i) => (
+              {safeStats.timeline.map((pt, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
                   {/* Tooltip on hover */}
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-12 z-20 bg-slate-900 text-white text-[10px] font-semibold p-1.5 rounded-md pointer-events-none whitespace-nowrap shadow-lg">
@@ -433,7 +444,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="space-y-3 pt-1">
-            {s.topThemes.map((th, i) => (
+            {safeStats.topThemes.map((th, i) => (
               <div key={i} className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-slate-800">{th.theme}</span>
@@ -482,9 +493,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-xs font-semibold text-slate-600">Web Direct</span>
                 <Globe className="w-4 h-4 text-indigo-600" />
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">{s.channelBreakdown.web}</div>
+              <div className="text-2xl font-extrabold text-slate-900">{safeStats.channelBreakdown.web}</div>
               <div className="text-[11px] text-slate-400">
-                {Math.round(((s.channelBreakdown.web || 0) / totalChannels) * 100)}% du total
+                {Math.round(((safeStats.channelBreakdown.web || 0) / totalChannels) * 100)}% du total
               </div>
             </div>
 
@@ -493,9 +504,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-xs font-semibold text-slate-600">Code QR</span>
                 <QrCode className="w-4 h-4 text-emerald-600" />
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">{s.channelBreakdown.qr}</div>
+              <div className="text-2xl font-extrabold text-slate-900">{safeStats.channelBreakdown.qr}</div>
               <div className="text-[11px] text-slate-400">
-                {Math.round(((s.channelBreakdown.qr || 0) / totalChannels) * 100)}% du total
+                {Math.round(((safeStats.channelBreakdown.qr || 0) / totalChannels) * 100)}% du total
               </div>
             </div>
 
@@ -504,9 +515,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-xs font-semibold text-slate-600">WhatsApp</span>
                 <MessageSquare className="w-4 h-4 text-emerald-500" />
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">{s.channelBreakdown.whatsapp}</div>
+              <div className="text-2xl font-extrabold text-slate-900">{safeStats.channelBreakdown.whatsapp}</div>
               <div className="text-[11px] text-slate-400">
-                {Math.round(((s.channelBreakdown.whatsapp || 0) / totalChannels) * 100)}% du total
+                {Math.round(((safeStats.channelBreakdown.whatsapp || 0) / totalChannels) * 100)}% du total
               </div>
             </div>
 
@@ -515,9 +526,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-xs font-semibold text-slate-600">Email</span>
                 <Mail className="w-4 h-4 text-blue-600" />
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">{s.channelBreakdown.email}</div>
+              <div className="text-2xl font-extrabold text-slate-900">{safeStats.channelBreakdown.email}</div>
               <div className="text-[11px] text-slate-400">
-                {Math.round(((s.channelBreakdown.email || 0) / totalChannels) * 100)}% du total
+                {Math.round(((safeStats.channelBreakdown.email || 0) / totalChannels) * 100)}% du total
               </div>
             </div>
           </div>
