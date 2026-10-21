@@ -148,6 +148,76 @@ if ($cleanPath === 'diagnostic') {
     exit;
 }
 
+// Create survey (POST /api/surveys)
+if ($cleanPath === 'surveys' && $method === 'POST') {
+    $rawInput = file_get_contents('php://input');
+    $payload = json_decode($rawInput, true);
+
+    if (!is_array($payload)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Corps JSON invalide']);
+        exit;
+    }
+
+    $title = trim((string)($payload['title'] ?? ''));
+    if ($title === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Le titre de l’enquête est obligatoire']);
+        exit;
+    }
+
+    if (!isset($db['surveys']) || !is_array($db['surveys'])) {
+        $db['surveys'] = [];
+    }
+
+    $now = date('c');
+    $status = in_array(($payload['status'] ?? 'draft'), ['draft', 'published', 'archived'], true)
+        ? ($payload['status'] ?? 'draft')
+        : 'draft';
+    $language = in_array(($payload['language'] ?? 'fr'), ['fr', 'ar', 'tn'], true)
+        ? ($payload['language'] ?? 'fr')
+        : 'fr';
+
+    $created = array_merge($payload, [
+        'id' => 'srv-' . bin2hex(random_bytes(8)),
+        'title' => $title,
+        'description' => (string)($payload['description'] ?? ''),
+        'language' => $language,
+        'status' => $status,
+        'questions' => isset($payload['questions']) && is_array($payload['questions']) ? array_values($payload['questions']) : [],
+        'complaintQuestion' => isset($payload['complaintQuestion']) && is_array($payload['complaintQuestion'])
+            ? $payload['complaintQuestion']
+            : [
+                'enabled' => false,
+                'title' => '',
+                'requireDossierNumber' => false,
+                'requireContactInfo' => false,
+            ],
+        'createdAt' => $now,
+        'updatedAt' => $now,
+        'responseCount' => 0,
+        'csatScore' => 0,
+        'npsScore' => 0,
+    ]);
+
+    if ($status === 'published') {
+        $created['publishedAt'] = $payload['publishedAt'] ?? $now;
+    } else {
+        unset($created['publishedAt']);
+    }
+
+    array_unshift($db['surveys'], $created);
+    if (!writeDb($dbFile, $db)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Impossible d’enregistrer l’enquête sur le disque']);
+        exit;
+    }
+
+    http_response_code(201);
+    echo json_encode($created, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Surveys list
 if ($cleanPath === 'surveys' && $method === 'GET') {
     echo json_encode($db['surveys'] ?? []);
