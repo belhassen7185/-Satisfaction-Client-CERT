@@ -14,16 +14,180 @@ import { clientStorage } from './clientStorage.ts';
 
 const API_BASE = '/api';
 
+export interface ApiDiagnosticErrorLog {
+  id: string;
+  timestamp: string;
+  endpoint: string;
+  method: string;
+  status: number;
+  statusText: string;
+  hostname: string;
+  href: string;
+  errorMessage?: string;
+  responseSnippet?: string;
+}
+
+const DIAGNOSTIC_STORAGE_KEY = 'satisfaction_ai_diagnostic_api_errors';
+
 /**
- * Helper to check if a fetch response is valid JSON
+ * Checks whether the app is running on a production or remote host
+ * (e.g. Hostinger, Cloud Run, custom domain, anything other than localhost/127.0.0.1)
  */
-async function parseJsonResponse<T>(res: Response): Promise<T | null> {
-  if (!res.ok) return null;
+export function isProductionHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = (window.location.hostname || '').toLowerCase();
+  return Boolean(host && host !== 'localhost' && host !== '127.0.0.1' && host !== '0.0.0.0');
+}
+
+/**
+ * Captures and logs 404/500/network errors to browser console and localStorage
+ * specifically when running on a production host to trace why responses aren't reaching the backend.
+ */
+export function logApiDiagnosticError(
+  endpoint: string,
+  method = 'GET',
+  status = 0,
+  statusText = 'NETWORK_ERROR',
+  errorMessage?: string,
+  responseSnippet?: string
+): void {
+  const isProd = isProductionHost();
+  const timestamp = new Date().toISOString();
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'server';
+  const href = typeof window !== 'undefined' ? window.location.href : '';
+
+  const entry: ApiDiagnosticErrorLog = {
+    id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp,
+    endpoint,
+    method,
+    status,
+    statusText,
+    hostname,
+    href,
+    errorMessage,
+    responseSnippet: responseSnippet ? responseSnippet.slice(0, 300) : undefined,
+  };
+
+  // 1. Output to browser console with prominent visual badge
+  console.error(
+    `%c[PROD API DIAGNOSTIC] HTTP ${status || 'ERR'} on ${method} ${endpoint}`,
+    'background: #dc2626; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold;',
+    {
+      endpoint,
+      method,
+      status,
+      statusText,
+      errorMessage,
+      responseSnippet,
+      hostname,
+      isProductionHost: isProd,
+      timestamp,
+    }
+  );
+
+  // 2. Persist to localStorage specifically when on production host (and keep accessible)
+  if (typeof window !== 'undefined') {
+    try {
+      const existingRaw = localStorage.getItem(DIAGNOSTIC_STORAGE_KEY);
+      let list: ApiDiagnosticErrorLog[] = [];
+      if (existingRaw) {
+        try {
+          const parsed = JSON.parse(existingRaw);
+          if (Array.isArray(parsed)) list = parsed;
+        } catch (_) {}
+      }
+      list.unshift(entry);
+      // Keep last 30 logs to avoid unbounded growth
+      if (list.length > 30) list = list.slice(0, 30);
+      localStorage.setItem(DIAGNOSTIC_STORAGE_KEY, JSON.stringify(list));
+    } catch (_) {}
+
+    // Expose quick console helper on window
+    try {
+      (window as any).__CERT_API_LOGS__ = (window as any).__CERT_API_LOGS__ || [];
+      (window as any).__CERT_API_LOGS__.unshift(entry);
+      (window as any).__GET_API_DIAGNOSTICS__ = getStoredDiagnosticLogs;
+      (window as any).__CLEAR_API_DIAGNOSTICS__ = clearStoredDiagnosticLogs;
+    } catch (_) {}
+  }
+}
+
+export function getStoredDiagnosticLogs(): ApiDiagnosticErrorLog[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DIAGNOSTIC_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+export function clearStoredDiagnosticLogs(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(DIAGNOSTIC_STORAGE_KEY);
+    if ((window as any).__CERT_API_LOGS__) {
+      (window as any).__CERT_API_LOGS__ = [];
+    }
+  } catch (_) {}
+}
+
+/**
+ * Wrapper around fetch that captures and logs 404, 500, and network errors automatically
+ */
+async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+  const method = init?.method || 'GET';
+  try {
+    const res = await fetch(url, init);
+    if (!res.ok) {
+      // Clone response to read snippet without consuming the body
+      let snippet = '';
+      try {
+        const cloned = res.clone();
+        snippet = await cloned.text();
+      } catch (_) {}
+      logApiDiagnosticError(url, method, res.status, res.statusText, undefined, snippet);
+    }
+    return res;
+  } catch (err: any) {
+    logApiDiagnosticError(url, method, 0, 'FETCH_NETWORK_ERROR', err?.message || String(err));
+    throw err;
+  }
+}
+
+/**
+ * Helper to check if a fetch response is valid JSON with diagnostic logging
+ */
+async function parseJsonResponse<T>(res: Response, endpoint = '', method = 'GET'): Promise<T | null> {
+  if (!res.ok) {
+    let snippet = '';
+    try {
+      snippet = await res.text();
+    } catch (_) {}
+    logApiDiagnosticError(endpoint, method, res.status, res.statusText, undefined, snippet);
+    return null;
+  }
   const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) return null;
+  if (!contentType.includes('application/json')) {
+    let snippet = '';
+    try {
+      snippet = await res.text();
+    } catch (_) {}
+    logApiDiagnosticError(
+      endpoint,
+      method,
+      res.status,
+      `NON_JSON_CONTENT_TYPE (${contentType})`,
+      'Expected JSON but received HTML or text. On Hostinger, check if Apache redirected to index.html.',
+      snippet
+    );
+    return null;
+  }
   try {
     return await res.json();
-  } catch {
+  } catch (err: any) {
+    logApiDiagnosticError(endpoint, method, res.status, 'JSON_PARSE_ERROR', err?.message);
     return null;
   }
 }
@@ -152,21 +316,22 @@ export const api = {
   },
 
   async submitSurvey(surveyId: string, payload: any): Promise<{ success: boolean; submissionId: string; complaintId?: string }> {
+    const endpoint = `${API_BASE}/surveys/${surveyId}/submit`;
     try {
-      const res = await fetch(`${API_BASE}/surveys/${surveyId}/submit`, {
+      const res = await safeFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await parseJsonResponse<{ success: boolean; submissionId: string; complaintId?: string }>(res);
+      const data = await parseJsonResponse<{ success: boolean; submissionId: string; complaintId?: string }>(res, endpoint, 'POST');
       if (data && data.success) {
         try {
           clientStorage.submitSurvey(surveyId, payload);
         } catch {}
         return data;
       }
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      logApiDiagnosticError(endpoint, 'POST', 0, 'SUBMISSION_NETWORK_ERROR', err?.message || String(err));
     }
     return clientStorage.submitSurvey(surveyId, payload);
   },
@@ -350,18 +515,19 @@ export const api = {
 
   // Stats
   async getDashboardStats(filter?: { surveyId?: string; periodDays?: number; language?: string; channel?: string }): Promise<DashboardStats> {
-    try {
-      const params = new URLSearchParams();
-      if (filter?.surveyId) params.set('surveyId', filter.surveyId);
-      if (filter?.periodDays) params.set('periodDays', String(filter.periodDays));
-      if (filter?.language) params.set('language', filter.language);
-      if (filter?.channel) params.set('channel', filter.channel);
+    const params = new URLSearchParams();
+    if (filter?.surveyId) params.set('surveyId', filter.surveyId);
+    if (filter?.periodDays) params.set('periodDays', String(filter.periodDays));
+    if (filter?.language) params.set('language', filter.language);
+    if (filter?.channel) params.set('channel', filter.channel);
+    const endpoint = `${API_BASE}/dashboard/stats?${params.toString()}`;
 
-      const res = await fetch(`${API_BASE}/dashboard/stats?${params.toString()}`);
-      const data = await parseJsonResponse<DashboardStats>(res);
+    try {
+      const res = await safeFetch(endpoint);
+      const data = await parseJsonResponse<DashboardStats>(res, endpoint, 'GET');
       if (data && typeof data.totalSurveys === 'number') return data;
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      logApiDiagnosticError(endpoint, 'GET', 0, 'DASHBOARD_STATS_NETWORK_ERROR', err?.message || String(err));
     }
     return clientStorage.getDashboardStats(filter);
   },
@@ -679,5 +845,18 @@ export const api = {
       // Fallback to local
     }
     return local;
+  },
+
+  // Production Diagnostics Helpers
+  getDiagnosticLogs(): ApiDiagnosticErrorLog[] {
+    return getStoredDiagnosticLogs();
+  },
+
+  clearDiagnosticLogs(): void {
+    clearStoredDiagnosticLogs();
+  },
+
+  isProductionHost(): boolean {
+    return isProductionHost();
   },
 };
