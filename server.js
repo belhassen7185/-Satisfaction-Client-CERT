@@ -2631,10 +2631,18 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path2.resolve(__dirname2, "dist");
+    let distPath = path2.resolve(__dirname2, "dist");
+    if (!fs2.existsSync(path2.join(distPath, "index.html")) && fs2.existsSync(path2.join(__dirname2, "index.html"))) {
+      distPath = __dirname2;
+    }
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path2.join(distPath, "index.html"));
+      const indexFile = path2.join(distPath, "index.html");
+      if (fs2.existsSync(indexFile)) {
+        res.sendFile(indexFile);
+      } else {
+        res.status(404).send('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:30px;background:#0f172a;color:#fff;"><h2>Satisfaction Client CERT</h2><p>Fichier index.html introuvable. Ex\xE9cutez "npm run build" pour g\xE9n\xE9rer les fichiers de production.</p></body></html>');
+      }
     });
   }
   app.listen(PORT, "0.0.0.0", () => {

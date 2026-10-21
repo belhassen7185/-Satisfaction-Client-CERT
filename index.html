@@ -15,7 +15,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc;">
+        <div style="width: 36px; height: 36px; border: 3px solid #6366f1; border-top-color: transparent; border-radius: 50%; animation: cert_spin 0.8s linear infinite;"></div>
+        <p style="margin-top: 16px; font-size: 13px; font-weight: 700; color: #e2e8f0; letter-spacing: 0.5px;">Satisfaction Client CERT</p>
+        <p style="margin-top: 4px; font-size: 11px; color: #94a3b8;">Chargement de l'application en cours...</p>
+      </div>
+      <style>
+        @keyframes cert_spin { to { transform: rotate(360deg); } }
+      </style>
+    </div>
+    <noscript>
+      <div style="padding: 24px; text-align: center; font-family: sans-serif; background: #fef2f2; color: #991b1b;">
+        Veuillez activer JavaScript dans votre navigateur pour utiliser l'application Satisfaction Client CERT.
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

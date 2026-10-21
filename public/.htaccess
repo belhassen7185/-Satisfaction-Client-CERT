@@ -1,7 +1,6 @@
 # Hostinger & Apache Configuration for SatisfactionAI / CERT
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /
 
   # 1. Enable CORS headers
   <IfModule mod_headers.c>
@@ -18,14 +17,16 @@
   # 3. Single Page Application (SPA) Routing: Fallback to index.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^.*$ index.html [L]
+  RewriteRule . index.html [L]
 </IfModule>
 
-# Disable directory browsing
-Options -Indexes
-
-# Security: Deny direct HTTP access to raw data and environment files
+# Security: Deny direct HTTP access to raw data and environment files (Apache 2.4 & 2.2 compatible)
 <FilesMatch "^(db\.json|\.env.*|.*\.ts)$">
-  Order allow,deny
-  Deny from all
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
 </FilesMatch>
