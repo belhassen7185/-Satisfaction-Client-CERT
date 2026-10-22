@@ -964,7 +964,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ language, initialSurve
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recommendation.priorityProblems.map((prob, i) => (
+              {(Array.isArray(recommendation.priorityProblems) ? recommendation.priorityProblems : []).map((prob, i) => (
                 <div
                   key={i}
                   className="bg-white p-5 rounded-2xl border border-rose-200 shadow-2xs space-y-3 flex flex-col justify-between"
